@@ -1,37 +1,42 @@
 import requests
-from bs4 import BeautifulSoup
 import os
 
-# These pull the hidden secrets you just saved in GitHub
+# These pull the hidden secrets you saved in GitHub
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-URL = "https://www.mytransport.sg/trainstatus"
+LTA_KEY = os.getenv("LTA_KEY")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message})
+    payload = {"chat_id": CHAT_ID, "text": message}
+    try:
+        requests.post(api_url, data=payload)
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
 def check_mrt():
+    # Official LTA Train Service Alert API endpoint
+    url = "http://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
+    headers = {"AccountKey": LTA_KEY, "accept": "application/json"}
+    
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(URL, headers=headers)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        response = requests.get(url, headers=headers)
+        # If the API is working, we check the 'Status' field
+        # Status 1 = Normal, Status 2 = Disruption
+        data = response.json()
+        value = data.get('value', {})
+        status = value.get('Status', 1) 
         
-        # This looks for the status image you identified in the CSS earlier
-        img_tag = soup.find('img', class_='mrt-status-img')
-        
-        if img_tag:
-            src = img_tag.get('src')
-            # If the image name is NOT 'Normal.png', send an alert!
-            if "Normal.png" not in src:
-                status_name = src.split('/')[-1]
-                send_telegram(f"🚨 MRT ALERT: Status image changed to '{status_name}'. Check: {URL}")
-            else:
-                send_telegram("✅ MRT Monitor Heartbeat: System is online and checking.")
+        if status != 1:
+            # If there's a delay, LTA provides a specific message
+            disruption_msg = value.get('Message', '🚨 MRT Disruption Detected!')
+            send_telegram(f"📢 LTA OFFICIAL ALERT: {disruption_msg}")
+            print("Disruption detected. Message sent.")
         else:
-            print("Could not find status image. Site layout may have changed.")
+            print("System confirmed: Status is Normal.")
+            
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"LTA API Error: {e}")
 
 if __name__ == "__main__":
     check_mrt()
