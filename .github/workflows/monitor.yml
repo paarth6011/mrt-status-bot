@@ -1,0 +1,23 @@
+name: MRT Monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # This tells GitHub to run every 5 minutes
+  workflow_dispatch:      # This adds a "Play" button so you can test it manually
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+      - name: Run Script
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python mrt_bot.py
