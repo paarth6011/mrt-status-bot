@@ -1,46 +1,34 @@
 import requests
 import os
 
-# GitHub Secrets
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 LTA_KEY = os.getenv("LTA_KEY")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        requests.post(api_url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
-    except Exception as e:
-        print(f"Telegram failed: {e}")
+    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message})
 
-def check_mrt():
-    # Official endpoint for train alerts
-    url = "https://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
-    headers = {
-        "AccountKey": LTA_KEY,
-        "accept": "application/json"
-    }
+def test_lta_connection():
+    # TEST A: Send a "Starting Test" message to your phone
+    send_telegram("🔍 Starting LTA Connection Test...")
+
+    # TEST B: Check Bus Arrival (usually more stable for new keys)
+    bus_url = "https://datamall2.mytransport.sg/ltaodataservice/BusArrivalv2?BusStopCode=60121"
+    headers = {"AccountKey": LTA_KEY, "accept": "application/json"}
     
     try:
-        response = requests.get(url, headers=headers, timeout=15)
-        print(f"LTA Response Code: {response.status_code}")
+        response = requests.get(bus_url, headers=headers, timeout=15)
+        print(f"LTA Bus API Code: {response.status_code}")
         
         if response.status_code == 200:
-            data = response.json()
-            value = data.get('value', {})
-            status = value.get('Status', 1) 
-            
-            # FOR TESTING: Sending a heartbeat even if status is Normal
-            send_telegram(f"✅ Bot is Online. LTA Status: {'Normal' if status == 1 else 'Disruption'}")
-            
-            if status != 1:
-                msg = value.get('Message', '🚨 MRT Disruption Detected!')
-                send_telegram(f"📢 LTA ALERT: {msg}")
+            send_telegram("✅ LTA Key is WORKING for Bus Data. (Wait 24h for Train Data).")
         else:
-            print(f"Error {response.status_code}: {response.text}")
+            send_telegram(f"❌ LTA Key failed for Bus too. Error: {response.status_code}")
+            print(f"Full Error: {response.text}")
             
     except Exception as e:
-        print(f"Script Error: {e}")
+        send_telegram(f"⚠️ Script Error: {str(e)}")
 
 if __name__ == "__main__":
-    check_mrt()
+    test_lta_connection()
