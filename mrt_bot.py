@@ -27,7 +27,7 @@ def check_mrt():
                 status_name = src.split('/')[-1]
                 send_telegram(f"🚨 MRT ALERT: Status image changed to '{status_name}'. Check: {URL}")
             else:
-                print("Status is Normal. No alert sent.")
+                send_telegram("✅ MRT Monitor Heartbeat: System is online and checking.")
         else:
             print("Could not find status image. Site layout may have changed.")
     except Exception as e:
