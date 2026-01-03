@@ -8,40 +8,50 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
-    time.sleep(2)
+    try:
+        # Markdown allows for bold and italic text in Telegram
+        requests.post(api_url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=15)
+        time.sleep(2)
+    except Exception as e:
+        print(f"Telegram failed: {e}")
 
 def check_mrt_status():
     print("Checking for detailed alerts...")
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
     try:
-        # 1. SMRT Detailed Check
+        # 1. SMRT Detailed Scrape
         smrt_res = requests.get("https://www.smrt.com.sg/Travel/Service-Indicator", headers=headers, timeout=15)
         smrt_soup = BeautifulSoup(smrt_res.text, 'html.parser')
-        # SMRT puts descriptions in the 'status-description' or specific table cells
-        smrt_alert = smrt_soup.find('div', class_='status-description') 
-        smrt_info = smrt_alert.get_text(strip=True) if smrt_alert else "Normal"
+        
+        # SMRT often uses 'status-description' or 'announcement-desc'
+        smrt_box = smrt_soup.find('div', class_='status-description') or smrt_soup.find('div', class_='announcement-desc')
+        smrt_info = smrt_box.get_text(strip=True) if smrt_box else "Normal Service"
 
-        # 2. SBS Detailed Check
+        # 2. SBS Transit Detailed Scrape
         sbs_res = requests.get("https://www.sbstransit.com.sg", headers=headers, timeout=15)
         sbs_soup = BeautifulSoup(sbs_res.text, 'html.parser')
-        # SBS uses a ticker or banner for live updates
-        sbs_banner = sbs_soup.find('div', class_='train-service-status')
-        sbs_info = sbs_banner.get_text(strip=True) if sbs_banner else "Normal"
+        
+        # SBS uses a marquee or a specific status bar on their homepage
+        sbs_banner = sbs_soup.find('div', class_='train-service-status') or sbs_soup.find('div', class_='marquee')
+        sbs_info = sbs_banner.get_text(strip=True) if sbs_banner else "Normal Service"
 
-        # Final Message Construction
-        if "Normal" not in smrt_info or "Normal" not in sbs_info:
-            message = "⚠️ *MRT SERVICE UPDATE*\n\n"
+        # Logic: If it's NOT "Normal", "Green", or "Service", it's likely a real update
+        is_smrt_bad = not any(x in smrt_info.lower() for x in ["normal", "green", "good service"])
+        is_sbs_bad = not any(x in sbs_info.lower() for x in ["normal", "green", "good service"])
+
+        if is_smrt_bad or is_sbs_bad:
+            message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
             
-            if "Normal" not in smrt_info:
-                message += f"🔴 *SMRT Info:*\n_{smrt_info}_\n\n"
+            if is_smrt_bad:
+                message += f"🔴 *SMRT Status:*\n{smrt_info}\n\n"
             
-            if "Normal" not in sbs_info:
-                message += f"🟣 *SBS Info:*\n_{sbs_info}_\n"
+            if is_sbs_bad:
+                message += f"🟣 *SBS Status:*\n{sbs_info}\n"
             
-            message += "\n🔗 [Check Live Map](https://www.lta.gov.sg/content/ltagov/en/getting_around/public_transport/rail_network.html)"
+            message += "\n🕒 _Check official sources for latest shuttle bus info._"
             send_telegram(message)
+            print(f"Alert Sent: {smrt_info} | {sbs_info}")
         else:
             print("Everything is Normal.")
             
