@@ -1,34 +1,43 @@
 import requests
+from bs4 import BeautifulSoup
 import os
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-LTA_KEY = os.getenv("LTA_KEY")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(api_url, data={"chat_id": CHAT_ID, "text": message})
 
-def test_lta_connection():
-    # TEST A: Send a "Starting Test" message to your phone
-    send_telegram("🔍 Starting LTA Connection Test...")
-
-    # TEST B: Check Bus Arrival (usually more stable for new keys)
-    bus_url = "https://datamall2.mytransport.sg/ltaodataservice/BusArrivalv2?BusStopCode=60121"
-    headers = {"AccountKey": LTA_KEY, "accept": "application/json"}
+def check_smrt_status():
+    # SMRT's official status page
+    url = "https://www.smrt.com.sg/Travel/Service-Indicator"
     
     try:
-        response = requests.get(bus_url, headers=headers, timeout=15)
-        print(f"LTA Bus API Code: {response.status_code}")
+        # Step 1: Tell Telegram we are checking
+        print("Checking SMRT website...")
         
-        if response.status_code == 200:
-            send_telegram("✅ LTA Key is WORKING for Bus Data. (Wait 24h for Train Data).")
+        response = requests.get(url, timeout=15)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # This looks for the status container on their site
+        # Note: We look for keywords that indicate trouble
+        page_text = soup.get_text().lower()
+        
+        trouble_keywords = ["delay", "disruption", "no train service", "track fault"]
+        
+        found_issues = [word for word in trouble_keywords if word in page_text]
+        
+        if found_issues:
+            issue_list = ", ".join(found_issues)
+            send_telegram(f"🚨 SMRT WEBSITE ALERT: Detected keywords: {issue_list}. Check here: {url}")
         else:
-            send_telegram(f"❌ LTA Key failed for Bus too. Error: {response.status_code}")
-            print(f"Full Error: {response.text}")
-            
+            print("No disruption keywords found on the SMRT page.")
+            # Optional: Uncomment below to get a 'System OK' message
+            # send_telegram("✅ SMRT Status: Normal service reported on website.")
+
     except Exception as e:
-        send_telegram(f"⚠️ Script Error: {str(e)}")
+        print(f"Error checking SMRT: {e}")
 
 if __name__ == "__main__":
-    test_lta_connection()
+    check_smrt_status()
