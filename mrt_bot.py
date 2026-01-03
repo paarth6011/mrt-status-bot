@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import time
+from datetime import datetime, timedelta
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -9,14 +10,16 @@ CHAT_ID = os.getenv("CHAT_ID")
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        # Markdown allows the bold/italic formatting you just saw
         requests.post(api_url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=15)
         time.sleep(2)
     except Exception as e:
         print(f"Telegram failed: {e}")
 
 def check_mrt_status():
-    print("Checking for live alerts...")
+    # Calculate Singapore Time (UTC +8)
+    sg_time = (datetime.utcnow() + timedelta(hours=8)).strftime('%I:%M %p')
+    print(f"Checking for live alerts at {sg_time} SGT...")
+    
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
@@ -32,7 +35,6 @@ def check_mrt_status():
         sbs_box = sbs_soup.find('div', class_='train-service-status') or sbs_soup.find('div', class_='marquee')
         sbs_info = sbs_box.get_text(strip=True) if sbs_box else "Normal Service"
 
-        # Logic to check for actual problems
         smrt_bad = not any(x in smrt_info.lower() for x in ["normal", "green", "good service"])
         sbs_bad = not any(x in sbs_info.lower() for x in ["normal", "green", "good service"])
 
@@ -43,11 +45,14 @@ def check_mrt_status():
             if sbs_bad:
                 message += f"🟣 *SBS Status:*\n_{sbs_info}_\n"
             
+            # The new timestamp line
+            message += f"\n🕒 _Last Updated: {sg_time} SGT_"
             message += "\n📍 [View Official Rail Map](https://www.lta.gov.sg/content/ltagov/en/getting_around/public_transport/rail_network.html)"
+            
             send_telegram(message)
-            print("Real alert sent!")
+            print(f"Real alert sent at {sg_time}")
         else:
-            print("Status: Everything is Normal.")
+            print(f"Status at {sg_time}: Everything is Normal.")
             
     except Exception as e:
         print(f"Error: {e}")
