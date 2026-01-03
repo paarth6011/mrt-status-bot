@@ -8,47 +8,42 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    try:
-        response = requests.post(api_url, data={"chat_id": CHAT_ID, "text": message}, timeout=15)
-        print(f"Telegram Sent: {response.status_code}")
-        time.sleep(2) 
-    except Exception as e:
-        print(f"Telegram failed: {e}")
+    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
+    time.sleep(2)
 
 def check_mrt_status():
-    print("Checking specific alert sections...")
-    
-    smrt_url = "https://www.smrt.com.sg/Travel/Service-Indicator"
-    sbs_url = "https://www.sbstransit.com.sg"
+    print("Checking for detailed alerts...")
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        # 1. SMRT Check (Targeting the service indicator table)
-        smrt_res = requests.get(smrt_url, headers=headers, timeout=15)
+        # 1. SMRT Detailed Check
+        smrt_res = requests.get("https://www.smrt.com.sg/Travel/Service-Indicator", headers=headers, timeout=15)
         smrt_soup = BeautifulSoup(smrt_res.text, 'html.parser')
-        # SMRT hides normal status in an image or specific div
-        smrt_main = smrt_soup.find('div', {'id': 'service-indicator'})
-        smrt_text = smrt_main.get_text().lower() if smrt_main else ""
-        
-        # 2. SBS Check (Targeting the 'Train Service' banner)
-        sbs_res = requests.get(sbs_url, headers=headers, timeout=15)
+        # SMRT puts descriptions in the 'status-description' or specific table cells
+        smrt_alert = smrt_soup.find('div', class_='status-description') 
+        smrt_info = smrt_alert.get_text(strip=True) if smrt_alert else "Normal"
+
+        # 2. SBS Detailed Check
+        sbs_res = requests.get("https://www.sbstransit.com.sg", headers=headers, timeout=15)
         sbs_soup = BeautifulSoup(sbs_res.text, 'html.parser')
-        # SBS often uses a specific class for alerts
+        # SBS uses a ticker or banner for live updates
         sbs_banner = sbs_soup.find('div', class_='train-service-status')
-        sbs_text = sbs_banner.get_text().lower() if sbs_banner else ""
+        sbs_info = sbs_banner.get_text(strip=True) if sbs_banner else "Normal"
 
-        # Only alert if these words are found in the ALERT BANNERS specifically
-        alerts = ["delay", "disruption", "track fault", "longer travel time"]
-        found = []
-        
-        for word in alerts:
-            if word in smrt_text: found.append(f"🔴 SMRT: {word}")
-            if word in sbs_text: found.append(f"🟣 SBS: {word}")
-
-        if found:
-            send_telegram("🚨 REAL-TIME ALERT:\n" + "\n".join(found))
+        # Final Message Construction
+        if "Normal" not in smrt_info or "Normal" not in sbs_info:
+            message = "⚠️ *MRT SERVICE UPDATE*\n\n"
+            
+            if "Normal" not in smrt_info:
+                message += f"🔴 *SMRT Info:*\n_{smrt_info}_\n\n"
+            
+            if "Normal" not in sbs_info:
+                message += f"🟣 *SBS Info:*\n_{sbs_info}_\n"
+            
+            message += "\n🔗 [Check Live Map](https://www.lta.gov.sg/content/ltagov/en/getting_around/public_transport/rail_network.html)"
+            send_telegram(message)
         else:
-            print("✅ Status confirmed Normal in alert boxes.")
+            print("Everything is Normal.")
             
     except Exception as e:
         print(f"Error: {e}")
