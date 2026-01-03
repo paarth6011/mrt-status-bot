@@ -41,7 +41,7 @@ def check_mrt_status():
         sbs_bad = not any(x in sbs_info.lower() for x in ["normal", "green", "good service"])
 
         # 1. THE DISRUPTION ALERT (High Priority)
-        if True:
+        if smrt_bad or sbs_bad:
             message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
             if smrt_bad: message += f"🔴 *SMRT Status:*\n_{smrt_info}_\n\n"
             if sbs_bad: message += f"🟣 *SBS Status:*\n_{sbs_info}_\n"
