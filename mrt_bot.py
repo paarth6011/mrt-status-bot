@@ -7,37 +7,43 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message})
+    requests.post(api_url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
 
-def check_smrt_status():
-    # SMRT's official status page
-    url = "https://www.smrt.com.sg/Travel/Service-Indicator"
+def check_mrt_status():
+    # URL 1: SMRT (North-South, East-West, Circle, Thomson-East Coast)
+    smrt_url = "https://www.smrt.com.sg/Travel/Service-Indicator"
+    # URL 2: SBS Transit (North-East, Downtown, LRTs)
+    sbs_url = "https://www.sbstransit.com.sg"
+    
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
-        # Step 1: Tell Telegram we are checking
-        print("Checking SMRT website...")
+        # Check SMRT
+        smrt_res = requests.get(smrt_url, headers=headers, timeout=15)
+        smrt_soup = BeautifulSoup(smrt_res.text, 'html.parser')
+        # SMRT uses specific 'status-item' classes for their lines
+        smrt_text = smrt_soup.get_text().lower()
         
-        response = requests.get(url, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # This looks for the status container on their site
-        # Note: We look for keywords that indicate trouble
-        page_text = soup.get_text().lower()
-        
-        trouble_keywords = ["delay", "disruption", "no train service", "track fault"]
-        
-        found_issues = [word for word in trouble_keywords if word in page_text]
-        
-        if found_issues:
-            issue_list = ", ".join(found_issues)
-            send_telegram(f"🚨 SMRT WEBSITE ALERT: Detected keywords: {issue_list}. Check here: {url}")
-        else:
-            print("No disruption keywords found on the SMRT page.")
-            # Optional: Uncomment below to get a 'System OK' message
-            # send_telegram("✅ SMRT Status: Normal service reported on website.")
+        # Check SBS
+        sbs_res = requests.get(sbs_url, headers=headers, timeout=15)
+        sbs_soup = BeautifulSoup(sbs_res.text, 'html.parser')
+        sbs_text = sbs_soup.get_text().lower()
 
+        # Keywords that mean trouble
+        alerts = ["delay", "disruption", "no service", "track fault", "longer travel time"]
+        
+        found = []
+        for word in alerts:
+            if word in smrt_text: found.append(f"SMRT: {word}")
+            if word in sbs_text: found.append(f"SBS: {word}")
+
+        if found:
+            send_telegram(f"🚨 MRT ALERT DETECTED:\n" + "\n".join(found))
+        else:
+            print("All lines confirmed Normal.")
+            
     except Exception as e:
-        print(f"Error checking SMRT: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    check_smrt_status()
+    check_mrt_status()
