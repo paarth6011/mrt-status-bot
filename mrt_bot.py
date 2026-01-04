@@ -8,11 +8,16 @@ def log(msg):
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+LTA_KEY = os.getenv("LTA_KEY")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    requests.post(api_url, data=payload, timeout=15)
+    try:
+        r = requests.post(api_url, data=payload, timeout=15)
+        log(f"Telegram Sent: {r.status_code}")
+    except Exception as e:
+        log(f"Telegram Failed: {e}")
 
 def check_mrt_status():
     now_sg = datetime.utcnow() + timedelta(hours=8)
@@ -21,43 +26,62 @@ def check_mrt_status():
 
     log(f"--- BOT RUN START: {sg_time_str} SGT ---")
     
-    # Using a reliable MRT status aggregator (nitter/rss) that doesn't block bots
-    # This fetches the latest official SMRT alerts directly
-    url = "https://mrtstatus.sg/api/v1/status" 
+    # Official LTA endpoint
+    url = "http://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
+    headers = {'AccountKey': LTA_KEY, 'accept': 'application/json'}
     
     try:
-        log("Fetching official status...")
-        res = requests.get(url, timeout=15)
+        log("Fetching official LTA data...")
+        res = requests.get(url, headers=headers, timeout=20)
         data = res.json()
         
-        # Check for any line that is NOT 'Normal'
-        disruptions = [f"{line['name']}: {line['status']}" for line in data.get('lines', []) if 'normal' not in line['status'].lower()]
-        
-        # --- THE OUTPUT STYLE YOU ASKED FOR ---
-        if disruptions:
+        status_data = data.get('value', {})
+        # OData sometimes returns a list; handle both
+        if isinstance(status_data, list) and len(status_data) > 0:
+            status_data = status_data[0]
+            
+        status_code = str(status_data.get('Status', '1'))
+        alert_msg = status_data.get('Message', [])
+
+        # --- THE OUTPUT STYLE YOU REQUESTED ---
+        if status_code == "2":
             log("Disruption detected!")
+            details = ""
+            for alert in alert_msg:
+                details += f"{alert.get('Line', 'Line')}: {alert.get('Content', 'Service Delay')}\n"
+            
             message = (
                 "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
                 "🔴 *SMRT Status:*\n"
-                f"{chr(10).join(disruptions)}\n\n"
+                f"{details}\n"
                 f"🕒 _Last Updated: {sg_time_str}_"
             )
             send_telegram(message)
         
-        # Morning Summary (7 AM)
+        # 1. Morning Summary (7 AM)
         elif sg_hour == 7 and sg_minute < 30:
-            send_telegram(f"☀️ *GOOD MORNING*\n\n✅ *SMRT Status:*\nAll lines are running normally.\n\n🕒 _Status: {sg_time_str}_")
+            message = (
+                "☀️ *GOOD MORNING*\n\n"
+                "✅ *SMRT Status:*\n"
+                "All lines are running normally.\n\n"
+                f"🕒 _Status: {sg_time_str}_"
+            )
+            send_telegram(message)
 
-        # TEST MODE: If you run this manually (like now), it will send an 'All Clear'
-        # so you aren't left wondering if it worked.
+        # 2. TEST/MANUAL RUN (Ensures you see a message NOW)
         else:
-            log("No disruption. Sending manual check confirmation...")
-            send_telegram(f"✅ *Manual Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str}_")
+            log("No disruption. Sending confirmation message...")
+            message = (
+                "✅ *Manual Status Check*\n\n"
+                "🔴 *SMRT Status:*\n"
+                "All MRT lines are running normally.\n\n"
+                f"🕒 _Time: {sg_time_str}_"
+            )
+            send_telegram(message)
             
     except Exception as e:
         log(f"❌ Error: {e}")
-        # Final fallback to ensure the bot is alive
-        send_telegram(f"🤖 *Bot is Online*\nBut couldn't reach the status server.\n🕒 _Time: {sg_time_str}_")
+        send_telegram(f"🤖 *Bot Alert*\nConnection to LTA failed.\n🕒 _Time: {sg_time_str}_")
 
 if __name__ == "__main__":
     check_mrt_status()
