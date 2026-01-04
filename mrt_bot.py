@@ -2,10 +2,9 @@ import requests
 import os
 from datetime import datetime, timedelta
 
-# Environment Variables
+# Configuration
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-# The Bridge URL you just generated
 BRIDGE_URL = "https://script.google.com/macros/s/AKfycbyPT-j7jck8F4aXGkghArOnhDqlPNENzNB2IsMWaJ42soLquJgA4E3Oo0YbFZF2OyVm/exec"
 
 def send_telegram(message):
@@ -22,65 +21,59 @@ def send_telegram(message):
         print(f"Telegram Failed: {e}")
 
 def check_mrt_status():
-    # Calculate Singapore Time (UTC +8)
     now_sg = datetime.utcnow() + timedelta(hours=8)
     sg_time_str = now_sg.strftime('%I:%M %p')
     sg_hour, sg_minute = now_sg.hour, now_sg.minute
 
-    print(f"--- FETCHING DATA VIA GOOGLE BRIDGE AT {sg_time_str} ---")
+    print(f"--- RUNNING AT {sg_time_str} SGT ---")
     
     try:
-        # GitHub will resolve script.google.com perfectly
+        # Fetch from your Google Apps Script Bridge
         res = requests.get(BRIDGE_URL, timeout=25)
         data = res.json()
         
-        # Handle the official LTA DataMall structure
         value = data.get('value', {})
-        if isinstance(value, list) and len(value) > 0:
-            status_info = value[0]
-        else:
-            status_info = value
-            
+        status_info = value[0] if isinstance(value, list) and len(value) > 0 else value
+        
         status_code = str(status_info.get('Status', '1'))
         alert_msg = status_info.get('Message', [])
 
-        # --- THE EXACT STYLE YOU REQUESTED ---
-
-        # 1. LIVE DISRUPTION ALERT (Status 2 = Disruption)
+        # 1. DISRUPTION DETECTED
         if status_code == "2":
             details = ""
-            if isinstance(alert_msg, list):
-                for alert in alert_msg:
-                    line = alert.get('Line', 'MRT')
-                    content = alert.get('Content', 'Service Delay')
-                    details += f"{line}: {content}\n"
+            for alert in alert_msg:
+                details += f"*{alert.get('Line')}*: {alert.get('Content')}\n"
             
-            message = (
+            msg = (
                 "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
                 "🔴 *SMRT Status:*\n"
                 f"{details}\n"
                 f"🕒 _Last Updated: {sg_time_str}_"
             )
-            send_telegram(message)
+            send_telegram(msg)
         
-        # 2. DAILY SUMMARY (7 AM SGT)
+        # 2. MORNING SUMMARY (7 AM)
         elif sg_hour == 7 and sg_minute < 30:
-            message = (
+            msg = (
                 "☀️ *GOOD MORNING*\n\n"
                 "🔴 *SMRT Status:*\n"
-                "All lines are running normally. No disruptions reported.\n\n"
+                "All lines are running normally.\n\n"
                 f"🕒 _Status as of {sg_time_str}_"
             )
-            send_telegram(message)
+            send_telegram(msg)
 
         # 3. MANUAL TEST / HOURLY CHECK
-        # Forces a message if run manually or at the top of the hour
         else:
-            status_text = "All MRT lines are running normally."
-            message = (
+            msg = (
                 "✅ *Manual Status Check*\n\n"
                 "🔴 *SMRT Status:*\n"
-                f"{status_text}\n\n"
+                "All MRT lines are running normally.\n\n"
                 f"🕒 _Time: {sg_time_str}_"
             )
-            send_telegram(message)
+            send_telegram(msg)
+            
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    check_mrt_status()
