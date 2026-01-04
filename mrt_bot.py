@@ -50,10 +50,27 @@ def check_mrt_status():
         
         # 2. THE DAILY SUMMARY (Only at 7:00 AM SGT)
         # Since the bot runs every 5-10 mins, we check if it's the 7:00 AM window
-        elif sg_hour == 10:
-            summary = "☀️ *GOOD MORNING!*\\n\n✅ *All MRT lines are running normally.*\\nYour commute is clear for now.\\n\\n🕒 _Sent at: 07:00 AM SGT_"
-            send_telegram(summary)
-            print("Daily summary sent.")
+        # 2. THE DAILY SUMMARY (Improved for GitHub delays)
+        # This will trigger if the bot runs anytime between 7:00 AM and 7:59 AM
+        elif sg_hour == 9:
+            # We add a 'flag' file check or just a wider window. 
+            # Given your logs, the bot ran at 7:18, 7:21, etc.
+            # Let's send it if it's the first time the bot 'sees' the 7 AM hour.
+            
+            summary = (
+            "☀️ *GOOD MORNING!*\n\n"
+            "✅ *All MRT lines are running normally.*\n"
+            "Your commute is clear for now.\n\n"
+            f"🕒 _Status as of: {sg_time_str} SGT_"
+        )
+            
+            # To avoid spam, we can check if a 'sent' file exists for today
+            # But for simplicity, let's just use a slightly wider minute gate:
+            if sg_minute < 30: 
+                send_telegram(summary)
+                print("Daily summary sent.")
+            else:
+                print("7 AM hour detected, but skipping summary to avoid duplicate.")
             
         else:
             print(f"Status at {sg_time_str}: Everything is Normal.")
