@@ -1,12 +1,18 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+import sys
 from datetime import datetime, timedelta
+
+# Force-flush logs so they appear in GitHub Actions immediately
+def log(msg):
+    print(msg, flush=True)
 
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 def send_telegram(message):
+    log(f"Attempting to send Telegram message...")
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID, 
@@ -14,22 +20,35 @@ def send_telegram(message):
         "parse_mode": "Markdown",
         "disable_web_page_preview": True
     }
-    requests.post(api_url, data=payload, timeout=15)
+    try:
+        r = requests.post(api_url, data=payload, timeout=15)
+        log(f"Telegram Response: {r.status_code}")
+    except Exception as e:
+        log(f"Telegram Error: {e}")
 
 def check_mrt_status():
     now_sg = datetime.utcnow() + timedelta(hours=8)
     sg_time_str = now_sg.strftime('%I:%M %p')
     sg_hour, sg_minute = now_sg.hour, now_sg.minute
 
+    log(f"--- BOT RUN START: {sg_time_str} SGT ---")
+    
+    # Check if Secrets are missing
+    if not TOKEN or not CHAT_ID:
+        log("❌ ERROR: BOT_TOKEN or CHAT_ID is missing from GitHub Secrets!")
+        return
+
     search_url = "https://www.google.com/search?q=mrt+status+singapore+latest+smrt+alerts"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
     try:
+        log("Fetching data from Google...")
         res = requests.get(search_url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # We look for the "Snippet" or "Description" parts of search results
+        # Target the specific search result snippets
         results = soup.select('.VwiC3b') 
+        log(f"Found {len(results)} search snippets.")
         
         disruption_content = ""
         keywords = ["delay", "track fault", "train fault", "additional travel time", "no service"]
@@ -38,12 +57,12 @@ def check_mrt_status():
             text = r.get_text()
             if any(k in text.lower() for k in keywords):
                 disruption_content = text
-                break # Take the most recent relevant result
+                log(f"⚠️ DISRUPTION KEYWORD FOUND: {text[:50]}...")
+                break 
 
-        # --- THE EXACT FORMATTING YOU REQUESTED ---
-
-        # 1. LIVE DISRUPTION ALERT
+        # --- OUTPUT LOGIC ---
         if disruption_content:
+            log("Sending Live Disruption Update...")
             message = (
                 "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
                 "🔴 *SMRT Status:*\n"
@@ -52,8 +71,8 @@ def check_mrt_status():
             )
             send_telegram(message)
         
-        # 2. DAILY SUMMARY (7 AM)
         elif sg_hour == 7 and sg_minute < 25:
+            log("Sending Morning Summary...")
             message = (
                 "☀️ *GOOD MORNING*\n\n"
                 "✅ *SMRT Status:*\n"
@@ -62,17 +81,20 @@ def check_mrt_status():
             )
             send_telegram(message)
 
-        # 3. HOURLY ALL CLEAR
-        elif sg_minute < 15 and sg_hour != 7:
+        elif sg_minute < 15:
+            log("Sending Hourly Check...")
             message = (
                 "✅ *Hourly Status Check*\n"
                 "All MRT lines are running normally.\n\n"
                 f"🕒 _Time: {sg_time_str}_"
             )
             send_telegram(message)
+        else:
+            log("Condition not met for messaging (Silent Mode).")
             
     except Exception as e:
-        print(f"Error: {e}")
+        log(f"❌ CRITICAL ERROR: {e}")
 
 if __name__ == "__main__":
     check_mrt_status()
+    log("--- BOT RUN FINISHED ---")
