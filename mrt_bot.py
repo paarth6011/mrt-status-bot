@@ -50,7 +50,7 @@ def check_mrt_status():
         
         # 2. THE DAILY SUMMARY (Only at 7:00 AM SGT)
         # Since the bot runs every 5-10 mins, we check if it's the 7:00 AM window
-        elif sg_hour == 7 and sg_minute < 10:
+        elif sg_hour == 10:
             summary = "☀️ *GOOD MORNING!*\\n\n✅ *All MRT lines are running normally.*\\nYour commute is clear for now.\\n\\n🕒 _Sent at: 07:00 AM SGT_"
             send_telegram(summary)
             print("Daily summary sent.")
