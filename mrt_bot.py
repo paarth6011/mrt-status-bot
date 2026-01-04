@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 # Configuration
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-# Use the exact URL from your screenshot (image_b0cc0a.jpg)
 BRIDGE_URL = "https://script.google.com/macros/s/AKfycbyPT-j7jck8F4aXGkghArOnhDqlPNENzNB2IsMWaJ42soLquJgA4E3Oo0YbFZF2OyVm/exec"
 
 def send_telegram(message):
@@ -22,18 +21,20 @@ def send_telegram(message):
         print(f"Telegram Failed: {e}")
 
 def check_mrt_status():
+    # Calculate Singapore Time (UTC+8)
     now_sg = datetime.utcnow() + timedelta(hours=8)
     sg_time_str = now_sg.strftime('%I:%M %p')
+    sg_hour = now_sg.hour
+    sg_minute = now_sg.minute
+    
     print(f"--- RUNNING AT {sg_time_str} SGT ---")
     
     try:
-        # We use a Session to properly handle the Google redirect handshake
+        # Connect to Google Bridge to bypass DNS blocks
         session = requests.Session()
         print("Connecting to Google Bridge...")
-        
-        # allow_redirects=True is vital for Google Apps Script
         res = session.get(BRIDGE_URL, timeout=30, allow_redirects=True)
-        
+    
         if res.status_code != 200:
             print(f"❌ Error: Server returned {res.status_code}")
             return
@@ -41,14 +42,12 @@ def check_mrt_status():
         data = res.json()
         value = data.get('value', {})
         
-        # Handle both list and object formats from OData
+        # Parse LTA OData structure
         status_info = value[0] if isinstance(value, list) and len(value) > 0 else value
         status_code = str(status_info.get('Status', '1'))
         alert_msg = status_info.get('Message', [])
 
-        # --- THE OUTPUT STYLE YOU REQUESTED ---
-        
-        # 1. LIVE DISRUPTION (Status 2)
+        # 1. LIVE DISRUPTION (Priority: Runs every 15 mins if Status is 2)
         if status_code == "2":
             details = ""
             if isinstance(alert_msg, list):
@@ -66,8 +65,19 @@ def check_mrt_status():
             send_telegram(msg)
             print("🚨 Disruption message sent.")
         
-        # 2. ALL CLEAR (Normal Status)
-        else:
+        # 2. MORNING SUMMARY (Only at 07:00 AM)
+        elif sg_hour == 7 and sg_minute == 0:
+            msg = (
+                "☀️ *GOOD MORNING*\n\n"
+                "🔴 *SMRT Status:*\n"
+                "All lines are running normally.\n\n"
+                f"🕒 _Status as of {sg_time_str}_"
+            )
+            send_telegram(msg)
+            print("☀️ Morning summary sent.")
+
+        # 3. HOURLY HEARTBEAT (Only at :00 of every other hour)
+        elif sg_minute == 0:
             msg = (
                 "✅ *SMRT Status Update*\n\n"
                 "🔴 *SMRT Status:*\n"
@@ -76,6 +86,9 @@ def check_mrt_status():
             )
             send_telegram(msg)
             print("✅ Normal status message sent.")
+        
+        else:
+            print("Skipping message: Not at the top of the hour and no disruption found.")
             
     except Exception as e:
         print(f"❌ Critical Error: {e}")
