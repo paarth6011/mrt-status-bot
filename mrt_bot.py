@@ -77,7 +77,7 @@ def check_mrt_status():
             print("☀️ Morning summary sent.")
 
         # 3. HOURLY HEARTBEAT (Only at :00 of every other hour)
-        elif sg_minute == 0:
+        elif sg_minute < 20:
             msg = (
                 "✅ *SMRT Status Update*\n\n"
                 "🔴 *SMRT Status:*\n"
