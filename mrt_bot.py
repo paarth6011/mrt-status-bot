@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 # Configuration
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+# Use your exact Google Script URL
 BRIDGE_URL = "https://script.google.com/macros/s/AKfycbyPT-j7jck8F4aXGkghArOnhDqlPNENzNB2IsMWaJ42soLquJgA4E3Oo0YbFZF2OyVm/exec"
 
 def send_telegram(message):
@@ -28,17 +29,23 @@ def check_mrt_status():
     print(f"--- RUNNING AT {sg_time_str} SGT ---")
     
     try:
-        # Fetch from your Google Apps Script Bridge
-        res = requests.get(BRIDGE_URL, timeout=25)
-        data = res.json()
+        # IMPORTANT: Google Apps Script requires allow_redirects=True
+        print("Fetching from Bridge...")
+        res = requests.get(BRIDGE_URL, timeout=25, allow_redirects=True)
         
+        # Check if the response is actually there
+        if not res.text or res.status_code != 200:
+            print(f"Error: Received empty response or status {res.status_code}")
+            return
+
+        data = res.json()
         value = data.get('value', {})
         status_info = value[0] if isinstance(value, list) and len(value) > 0 else value
         
         status_code = str(status_info.get('Status', '1'))
         alert_msg = status_info.get('Message', [])
 
-        # 1. DISRUPTION DETECTED
+        # 1. DISRUPTION DETECTED (Status 2)
         if status_code == "2":
             details = ""
             for alert in alert_msg:
@@ -52,28 +59,20 @@ def check_mrt_status():
             )
             send_telegram(msg)
         
-        # 2. MORNING SUMMARY (7 AM)
-        elif sg_hour == 7 and sg_minute < 30:
+        # 2. MORNING SUMMARY / MANUAL CHECK / HOURLY
+        else:
+            # We always send a message for now to confirm it's working
             msg = (
-                "☀️ *GOOD MORNING*\n\n"
+                "✅ *SMRT Status Update*\n\n"
                 "🔴 *SMRT Status:*\n"
                 "All lines are running normally.\n\n"
-                f"🕒 _Status as of {sg_time_str}_"
-            )
-            send_telegram(msg)
-
-        # 3. MANUAL TEST / HOURLY CHECK
-        else:
-            msg = (
-                "✅ *Manual Status Check*\n\n"
-                "🔴 *SMRT Status:*\n"
-                "All MRT lines are running normally.\n\n"
                 f"🕒 _Time: {sg_time_str}_"
             )
             send_telegram(msg)
             
     except Exception as e:
         print(f"Error: {e}")
+        print(f"Raw Response Content: {res.text[:100] if 'res' in locals() else 'No response'}")
 
 if __name__ == "__main__":
     check_mrt_status()
