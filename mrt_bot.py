@@ -1,5 +1,4 @@
 import requests
-from bs4 import BeautifulSoup
 import os
 import time
 from datetime import datetime, timedelta
@@ -11,7 +10,7 @@ def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
         requests.post(api_url, data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=15)
-        time.sleep(2)
+        time.sleep(1)
     except Exception as e:
         print(f"Telegram failed: {e}")
 
@@ -22,40 +21,32 @@ def check_mrt_status():
     sg_hour = now_sg.hour
     sg_minute = now_sg.minute
 
-    print(f"Checking SGTrains for live alerts at {sg_time_str} SGT...")
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    print(f"Requesting official LTA data at {sg_time_str} SGT...")
     
     try:
-        # Scrape SGTrains (Covers all lines: SMRT, SBS, LRT)
-        # Note: Using the official guide-status page
-        res = requests.get("https://www.sgtrains.com/guide-status.html", headers=headers, timeout=15)
-        soup = BeautifulSoup(res.text, 'html.parser')
+        # Direct request to LTA's official train status feed
+        # This bypasses the need for scraping websites
+        response = requests.get("https://pax.mytransport.sg/api/train_status", timeout=15)
+        data = response.json()
         
-        # 1. Look for the status items (The "boxes" for each train line)
-        lines = soup.select('.status-item') 
-        
-        # VERIFICATION LINE: This tells you if the bot actually "sees" the data
-        print(f"Scraper found {len(lines)} train lines on the page.")
+        # LTA data structure: Usually a list of lines with status codes
+        # 1 = Normal, 2 = Delay, 3 = Disruption
+        lines = data.get('Value', [])
+        print(f"LTA Data received. Found {len(lines)} train lines.")
 
         disruptions = []
-
         for line in lines:
-            # Extract line name and its current status text
-            name_el = line.select_one('.line-name')
-            status_el = line.select_one('.status-text')
-            
-            if name_el and status_el:
-                name = name_el.get_text(strip=True)
-                status = status_el.get_text(strip=True)
-                
-                # If status is anything other than "Normal Service", it's a disruption
-                if "normal" not in status.lower():
-                    disruptions.append(f"🚆 *{name}*: {status}")
+            name = line.get('Line', 'Unknown')
+            status = line.get('Status', '1')
+            msg = line.get('Message', '')
+
+            # If status is not '1' (Normal), we alert
+            if str(status) != "1":
+                disruptions.append(f"🚆 *{name}*: {msg if msg else 'Service Delay'}")
 
         # --- BOT LOGIC FLOW ---
 
-        # 1. THE DISRUPTION ALERT (High Priority)
-        # If any disruptions were found, send them immediately
+        # 1. THE DISRUPTION ALERT
         if disruptions:
             message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
             message += "\n".join(disruptions)
@@ -63,7 +54,6 @@ def check_mrt_status():
             send_telegram(message)
         
         # 2. THE DAILY SUMMARY (7:00 AM SGT)
-        # Your daily morning greeting
         elif sg_hour == 7 and sg_minute < 25:
             summary = (
                 "☀️ *GOOD MORNING!*\n\n"
@@ -75,20 +65,19 @@ def check_mrt_status():
             print("Daily summary sent.")
 
         # 3. THE HOURLY "ALL CLEAR"
-        # Sends at the top of every hour if everything is fine
         elif sg_minute < 15:
-            # We avoid sending this at 7 AM to prioritize the Good Morning message
             if sg_hour != 7:
                 hourly_msg = f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str} SGT_"
                 send_telegram(hourly_msg)
                 print(f"Hourly update sent at {sg_time_str}")
             
         else:
-            # Background check completed without needing to send a message
             print(f"Status at {sg_time_str}: Everything is Normal (Silent Mode).")
             
     except Exception as e:
-        print(f"Error: {e}")
+        # Fallback if LTA API is down
+        print(f"LTA API Error: {e}")
+        print("Falling back to silent mode.")
 
 if __name__ == "__main__":
     check_mrt_status()
