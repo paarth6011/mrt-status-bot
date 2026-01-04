@@ -2,14 +2,10 @@ name: MRT Monitor
 
 on:
   schedule:
-    # 23:00 UTC is exactly 07:00 AM SGT (Singapore Time)
-    - cron: '0 23 * * *'       # Runs exactly at 7:00 AM SGT for the summary
-    
-    # Standard monitoring throughout the day every 10 minutes
-    # 23:10 UTC to 16:00 UTC (07:10 AM to 12:00 AM SGT)
-    - cron: '*/10 23 * * *'    # 7:10 AM - 7:59 AM SGT
-    - cron: '*/10 0-15 * * *'  # 8:00 AM - 11:59 PM SGT
-  workflow_dispatch:           # Allows you to click the 'Play' button anytime
+    # Runs every 15 minutes during peak Singapore hours (6 AM - 11 PM SGT)
+    # Note: GitHub uses UTC time. SGT is UTC+8.
+    - cron: '0,15,30,45 22-23,0-15 * * *'
+  workflow_dispatch: # Allows you to still run it manually
 
 jobs:
   run-bot:
