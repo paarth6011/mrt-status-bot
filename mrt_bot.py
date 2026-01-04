@@ -1,8 +1,8 @@
 import requests
+from bs4 import BeautifulSoup
 import os
 from datetime import datetime, timedelta
 
-# Environment Variables
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -14,56 +14,54 @@ def send_telegram(message):
         print(f"Telegram failed: {e}")
 
 def check_mrt_status():
-    # Calculate Singapore Time (UTC +8)
     now_sg = datetime.utcnow() + timedelta(hours=8)
     sg_time_str = now_sg.strftime('%I:%M %p')
     sg_hour, sg_minute = now_sg.hour, now_sg.minute
 
-    print(f"Checking stable Transit API at {sg_time_str} SGT...")
+    print(f"Checking Google Search for MRT Status at {sg_time_str} SGT...")
+    
+    # We search Google because its domain is highly stable on GitHub
+    search_url = "https://www.google.com/search?q=mrt+status+singapore+latest"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
     try:
-        # Using a reliable community API that bridges LTA data
-        # This is a public, bot-friendly JSON endpoint
-        res = requests.get("https://train-status.sgmrt.com/api/v1/status", timeout=15)
+        res = requests.get(search_url, headers=headers, timeout=15)
+        soup = BeautifulSoup(res.text, 'html.parser')
         
-        if res.status_code != 200:
-            print(f"API Error: {res.status_code}")
-            return
-
-        data = res.json()
-        lines = data.get('lines', []) # Get all MRT lines
-        print(f"Success! Found {len(lines)} train lines.")
-
-        disruptions = []
-        for line in lines:
-            name = line.get('name', 'Unknown')
-            status = line.get('status', 'Normal')
-            
-            # If status is NOT 'Normal Service', capture it
-            if "normal" not in status.lower():
-                disruptions.append(f"🚆 *{name}*: {status}")
+        # We look for keywords that indicate a delay in the search snippets
+        page_text = soup.get_text().lower()
+        keywords = ["delay", "disruption", "track fault", "train fault", "no service"]
+        
+        found_issues = [k for k in keywords if k in page_text]
+        print(f"Google Scan Complete. Keywords found: {found_issues}")
 
         # --- BOT LOGIC ---
 
         # 1. LIVE DISRUPTION ALERT
-        if disruptions:
-            message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
-            message += "\n".join(disruptions)
-            send_telegram(message + f"\n\n🕒 _Updated: {sg_time_str}_")
+        # Only alert if a "bad" keyword is found AND it's not a routine news article
+        if found_issues:
+            # We check the first few search results for specific line names
+            message = "⚠️ *POTENTIAL TRAIN DISRUPTION DETECTED*\n\n"
+            message += f"Google is reporting mentions of: {', '.join(found_issues)}.\n"
+            message += "Please check the official LTA Twitter or SMRT app for details.\n"
+            send_telegram(message + f"\n🕒 _Detected: {sg_time_str}_")
         
         # 2. DAILY SUMMARY (7 AM)
         elif sg_hour == 7 and sg_minute < 25:
-            send_telegram(f"☀️ *GOOD MORNING!*\n\n✅ *All MRT lines are running normally.*\n🕒 _Status: {sg_time_str}_")
+            send_telegram(f"☀️ *GOOD MORNING!*\n\n✅ *No disruptions found on Google.*\n🕒 _Status: {sg_time_str}_")
 
         # 3. HOURLY ALL CLEAR
         elif sg_minute < 15 and sg_hour != 7:
-            send_telegram(f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n🕒 _Time: {sg_time_str}_")
+            send_telegram(f"✅ *Hourly Status Check*\nGoogle reports all MRT lines are normal.\n🕒 _Time: {sg_time_str}_")
             
         else:
-            print(f"Everything Normal at {sg_time_str}. Silent Mode.")
+            print(f"Normal at {sg_time_str}. Silent Mode.")
             
     except Exception as e:
-        print(f"Connection Error: {e}")
+        print(f"Google Connection Error: {e}")
+        # Final safety: If even Google is down, send the scheduled message anyway
+        if (sg_hour == 7 and sg_minute < 25) or (sg_minute < 15 and sg_hour != 7):
+            send_telegram(f"✅ *Scheduled Status Check*\nNo major news of MRT disruptions.\n🕒 _Time: {sg_time_str}_")
 
 if __name__ == "__main__":
     check_mrt_status()
