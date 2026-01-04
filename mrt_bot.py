@@ -3,6 +3,7 @@ import os
 import time
 from datetime import datetime, timedelta
 
+# Environment Variables from GitHub Secrets
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -21,39 +22,38 @@ def check_mrt_status():
     sg_hour = now_sg.hour
     sg_minute = now_sg.minute
 
-    print(f"Requesting official LTA data at {sg_time_str} SGT...")
+    print(f"Requesting official LTA DataMall at {sg_time_str} SGT...")
     
     try:
-        # Direct request to LTA's official train status feed
-        # This bypasses the need for scraping websites
-        response = requests.get("https://pax.mytransport.sg/api/train_status", timeout=15)
+        # Official LTA Public Endpoint for Train Service Alerts
+        url = "https://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
+        
+        # We perform a standard GET request
+        response = requests.get(url, timeout=15)
         data = response.json()
         
-        # LTA data structure: Usually a list of lines with status codes
-        # 1 = Normal, 2 = Delay, 3 = Disruption
-        lines = data.get('Value', [])
-        print(f"LTA Data received. Found {len(lines)} train lines.")
+        # LTA 'Status' meaning: 1 = Normal, 2 = Disruption
+        status_data = data.get('value', {})
+        status_code = status_data.get('Status', 1)
+        alert_messages = status_data.get('Message', []) 
 
-        disruptions = []
-        for line in lines:
-            name = line.get('Line', 'Unknown')
-            status = line.get('Status', '1')
-            msg = line.get('Message', '')
-
-            # If status is not '1' (Normal), we alert
-            if str(status) != "1":
-                disruptions.append(f"🚆 *{name}*: {msg if msg else 'Service Delay'}")
+        print(f"LTA Data received. Status Code: {status_code}")
 
         # --- BOT LOGIC FLOW ---
 
-        # 1. THE DISRUPTION ALERT
-        if disruptions:
+        # 1. THE DISRUPTION ALERT (High Priority)
+        # If Status is 2, there is an active delay or breakdown
+        if status_code == 2:
             message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
-            message += "\n".join(disruptions)
-            message += f"\n\n🕒 _Last Updated: {sg_time_str} SGT_"
+            for alert in alert_messages:
+                line = alert.get('Line', 'MRT')
+                content = alert.get('Content', 'Service Delay')
+                message += f"🚆 *{line}*: {content}\n"
+            message += f"\n🕒 _Last Updated: {sg_time_str} SGT_"
             send_telegram(message)
         
         # 2. THE DAILY SUMMARY (7:00 AM SGT)
+        # Only triggers during the first run of the 7 AM hour
         elif sg_hour == 7 and sg_minute < 25:
             summary = (
                 "☀️ *GOOD MORNING!*\n\n"
@@ -65,8 +65,9 @@ def check_mrt_status():
             print("Daily summary sent.")
 
         # 3. THE HOURLY "ALL CLEAR"
+        # Sends at the top of every hour if Status is Normal (1)
         elif sg_minute < 15:
-            if sg_hour != 7:
+            if sg_hour != 7: # Skip 7 AM as the Good Morning message covers it
                 hourly_msg = f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str} SGT_"
                 send_telegram(hourly_msg)
                 print(f"Hourly update sent at {sg_time_str}")
@@ -75,9 +76,9 @@ def check_mrt_status():
             print(f"Status at {sg_time_str}: Everything is Normal (Silent Mode).")
             
     except Exception as e:
-        # Fallback if LTA API is down
-        print(f"LTA API Error: {e}")
-        print("Falling back to silent mode.")
+        print(f"LTA DataMall Error: {e}")
+        # If the API is completely down, we alert the logs so you know
+        print("Check if LTA DataMall is reachable or requires an AccountKey.")
 
 if __name__ == "__main__":
     check_mrt_status()
