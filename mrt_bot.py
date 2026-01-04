@@ -30,8 +30,7 @@ def check_mrt_status():
         res = requests.get("https://www.sgtrains.com/guide-status.html", headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # Look for disruption alerts on the SGTrains page
-        # They typically use 'status-item' or specific divs for each line
+        # SGTrains usually groups lines into a status table or list
         lines = soup.select('.status-item') 
         disruptions = []
 
@@ -43,29 +42,39 @@ def check_mrt_status():
             if "normal" not in status.lower():
                 disruptions.append(f"🚆 *{name}*: {status}")
 
-        # 1. THE DISRUPTION ALERT (Only sends if something is wrong)
+        # --- BOT LOGIC FLOW ---
+
+        # 1. THE DISRUPTION ALERT (High Priority)
+        # Sends immediately if any line is not "Normal"
         if disruptions:
             message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
             message += "\n".join(disruptions)
             message += f"\n\n🕒 _Last Updated: {sg_time_str} SGT_"
             send_telegram(message)
         
-        # 2. THE DAILY SUMMARY (Only at 7:00 AM SGT)
-        elif sg_hour == 7:
-            if sg_minute < 25: 
-                summary = (
-                    "☀️ *GOOD MORNING!*\n\n"
-                    "✅ *All MRT lines are running normally.*\n"
-                    "Your commute is clear for now.\n\n"
-                    f"🕒 _Status as of: {sg_time_str} SGT_"
-                )
-                send_telegram(summary)
-                print("Daily summary sent.")
-            else:
-                print("7 AM hour detected, but skipping summary to avoid duplicate.")
-                
+        # 2. THE DAILY SUMMARY (7:00 AM SGT)
+        # Sends once a day during the 7 AM hour
+        elif sg_hour == 7 and sg_minute < 25:
+            summary = (
+                "☀️ *GOOD MORNING!*\n\n"
+                "✅ *All MRT lines are running normally.*\n"
+                "Your commute is clear for now.\n\n"
+                f"🕒 _Status as of: {sg_time_str} SGT_"
+            )
+            send_telegram(summary)
+            print("Daily summary sent.")
+
+        # 3. THE HOURLY "ALL CLEAR"
+        # Sends at the top of every hour (except 7 AM to avoid double-posting)
+        elif sg_minute < 15:
+            # This gate ensures you only get one message per hour
+            hourly_msg = f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str} SGT_"
+            send_telegram(hourly_msg)
+            print(f"Hourly update sent at {sg_time_str}")
+            
         else:
-            print(f"Status at {sg_time_str}: Everything is Normal.")
+            # Silent mode: script runs in background but doesn't message Telegram
+            print(f"Status at {sg_time_str}: Everything is Normal (Silent Mode).")
             
     except Exception as e:
         print(f"Error: {e}")
