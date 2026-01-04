@@ -27,25 +27,35 @@ def check_mrt_status():
     
     try:
         # Scrape SGTrains (Covers all lines: SMRT, SBS, LRT)
+        # Note: Using the official guide-status page
         res = requests.get("https://www.sgtrains.com/guide-status.html", headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # SGTrains usually groups lines into a status table or list
+        # 1. Look for the status items (The "boxes" for each train line)
         lines = soup.select('.status-item') 
+        
+        # VERIFICATION LINE: This tells you if the bot actually "sees" the data
+        print(f"Scraper found {len(lines)} train lines on the page.")
+
         disruptions = []
 
         for line in lines:
-            name = line.select_one('.line-name').get_text(strip=True) if line.select_one('.line-name') else "Unknown Line"
-            status = line.select_one('.status-text').get_text(strip=True) if line.select_one('.status-text') else "Normal"
+            # Extract line name and its current status text
+            name_el = line.select_one('.line-name')
+            status_el = line.select_one('.status-text')
             
-            # If status is NOT normal, add it to our alert list
-            if "normal" not in status.lower():
-                disruptions.append(f"🚆 *{name}*: {status}")
+            if name_el and status_el:
+                name = name_el.get_text(strip=True)
+                status = status_el.get_text(strip=True)
+                
+                # If status is anything other than "Normal Service", it's a disruption
+                if "normal" not in status.lower():
+                    disruptions.append(f"🚆 *{name}*: {status}")
 
         # --- BOT LOGIC FLOW ---
 
         # 1. THE DISRUPTION ALERT (High Priority)
-        # Sends immediately if any line is not "Normal"
+        # If any disruptions were found, send them immediately
         if disruptions:
             message = "⚠️ *LIVE TRAIN SERVICE UPDATE*\n\n"
             message += "\n".join(disruptions)
@@ -53,7 +63,7 @@ def check_mrt_status():
             send_telegram(message)
         
         # 2. THE DAILY SUMMARY (7:00 AM SGT)
-        # Sends once a day during the 7 AM hour
+        # Your daily morning greeting
         elif sg_hour == 7 and sg_minute < 25:
             summary = (
                 "☀️ *GOOD MORNING!*\n\n"
@@ -65,15 +75,16 @@ def check_mrt_status():
             print("Daily summary sent.")
 
         # 3. THE HOURLY "ALL CLEAR"
-        # Sends at the top of every hour (except 7 AM to avoid double-posting)
+        # Sends at the top of every hour if everything is fine
         elif sg_minute < 15:
-            # This gate ensures you only get one message per hour
-            hourly_msg = f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str} SGT_"
-            send_telegram(hourly_msg)
-            print(f"Hourly update sent at {sg_time_str}")
+            # We avoid sending this at 7 AM to prioritize the Good Morning message
+            if sg_hour != 7:
+                hourly_msg = f"✅ *Hourly Status Check*\nAll MRT lines are running normally.\n\n🕒 _Time: {sg_time_str} SGT_"
+                send_telegram(hourly_msg)
+                print(f"Hourly update sent at {sg_time_str}")
             
         else:
-            # Silent mode: script runs in background but doesn't message Telegram
+            # Background check completed without needing to send a message
             print(f"Status at {sg_time_str}: Everything is Normal (Silent Mode).")
             
     except Exception as e:
