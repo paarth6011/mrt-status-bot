@@ -54,14 +54,17 @@ def check_mrt_status():
                 return # Skip normal updates if an alert was sent
 
         # 2. MORNING SUMMARY (Only at 7:00 AM)
-        if sg_hour == 7 and sg_minute == 0:
+        # 2. MORNING SUMMARY (Window between 7:00 and 7:09 AM)
+        if sg_hour == 7 and sg_minute < 10:
             msg = f"☀️ *GOOD MORNING*\n\n🔴 *SMRT Status:*\nAll lines normal.\n\n🕒 _Status: {sg_time_str}_"
             send_telegram(msg)
+            print("☀️ Morning summary sent.")
 
-        # 3. HOURLY HEARTBEAT
-        elif sg_minute == 0:
+        # 3. HOURLY HEARTBEAT (Window for the first 30 mins of every hour)
+        elif sg_minute < 30:
             msg = f"✅ *SMRT Status Update*\n\n🔴 *SMRT Status:*\nAll lines normal.\n\n🕒 _Time: {sg_time_str}_"
             send_telegram(msg)
+            print("✅ Normal status message sent.")
             
     except Exception as e:
         print(f"❌ Error: {e}")
