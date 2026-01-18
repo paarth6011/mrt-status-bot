@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 # Configuration
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-BRIDGE_URL = "https://script.google.com/macros/s/AKfycbyPT-j7jck8F4aXGkghArOnhDqlPNENzNB2IsMWaJ42soLquJgA4E3Oo0YbFZF2OyVm/exec"
+# Your updated Google Bridge URL
+BRIDGE_URL = "https://script.google.com/macros/s/AKfycbx1LjBYCyTH7jbnzpDL6cICi784bLMDbQkl2IzXKXaWj2dWGW45BIbspObRNvtRindwTQ/exec"
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -30,72 +31,35 @@ def check_mrt_status():
     print(f"--- RUNNING AT {sg_time_str} SGT ---")
     
     try:
-        # Connect to Google Bridge
-        session = requests.Session()
-        res = session.get(BRIDGE_URL, timeout=30, allow_redirects=True)
-    
-        if res.status_code != 200:
-            print(f"❌ Error: Server returned {res.status_code}")
-            return
-
+        # The Google Script now handles the "memory" of the messages
+        res = requests.get(BRIDGE_URL, timeout=30)
         data = res.json()
         value = data.get('value', {})
-        status_info = value[0] if isinstance(value, list) and len(value) > 0 else value
-        alert_msg = status_info.get('Message', [])
+        alert_msg = value.get('Message', [])
 
-        # 1. LIVE NOTICE LOGIC (Checks every 5-15 mins)
-        if alert_msg and len(alert_msg) > 0:
+        # 1. FAULT DETECTION (Pings only if the Google Script sends a NEW/DIFFERENT message)
+        if alert_msg:
             details = ""
             for alert in alert_msg:
+                line = alert.get('Line', 'MRT')
                 content = alert.get('Content', '')
-                
-                # FILTER: Ignore the specific planned Circle Line work spam
-                if "tunnel strengthening works" in content.lower():
-                    continue
-                
-                if content:
-                    line = alert.get('Line', 'MRT')
-                    details += f"*{line}*: {content}\n"
+                details += f"*{line}*: {content}\n"
             
-            # Send if there is an ACTUAL new disruption or notice
             if details:
-                msg = (
-                    "⚠️ *TRAIN SERVICE NOTICE*\n\n"
-                    "🔴 *SMRT Status:*\n"
-                    f"{details}\n"
-                    f"🕒 _Last Updated: {sg_time_str}_"
-                )
-                send_telegram(msg)
-                print("🚨 Live notice sent.")
-                return # Skip scheduled updates if a notice was sent
+                send_telegram(f"⚠️ *NEW TRAIN NOTICE*\n\n{details}\n🕒 _Last Updated: {sg_time_str}_")
+                print("🚨 New disruption detected and sent.")
+                return 
 
-        # 2. MORNING SUMMARY (Window for GitHub delays: 7:00 - 7:09 AM)
+        # 2. DAILY SUMMARY (Once a day at 7:00 AM)
         if sg_hour == 7 and sg_minute < 10:
-            msg = (
-                "☀️ *GOOD MORNING*\n\n"
-                "🔴 *SMRT Status:*\n"
-                "All lines are running normally.\n\n"
-                f"🕒 _Status as of {sg_time_str}_"
-            )
-            send_telegram(msg)
-            print("☀️ Morning summary sent.")
-
-        # 3. HOURLY HEARTBEAT (Window for GitHub delays: First 10 mins of every hour)
-        elif sg_minute < 10:
-            msg = (
-                "✅ *SMRT Status Update*\n\n"
-                "🔴 *SMRT Status:*\n"
-                "All lines are running normally.\n\n"
-                f"🕒 _Time: {sg_time_str}_"
-            )
-            send_telegram(msg)
-            print("✅ Normal status message sent.")
+            send_telegram(f"☀️ *DAILY MRT STATUS*\n\nAll lines normal.\n\n🕒 _Checked at {sg_time_str}_")
+            print("☀️ Daily 7AM summary sent.")
             
         else:
-            print("Skipping message: Not in a notification window and no new disruption.")
+            print("No new changes detected and not the 7AM window. Staying silent.")
             
     except Exception as e:
-        print(f"❌ Critical Error: {e}")
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     check_mrt_status()
