@@ -51,7 +51,7 @@ def check_mrt_status():
                 return 
 
         # 2. DAILY SUMMARY (Once a day at 7:00 AM)
-        if sg_hour == 7 and sg_minute < 50:
+        if sg_hour == 7 and sg_minute < 30:
             send_telegram(f"☀️ *DAILY MRT STATUS*\n\nAll lines normal.\n\n🕒 _Checked at {sg_time_str}_")
             print("☀️ Daily 7AM summary sent.")
             
