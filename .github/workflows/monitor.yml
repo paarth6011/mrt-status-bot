@@ -23,4 +23,5 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          BRIDGE_URL: ${{ secrets.BRIDGE_URL }} # <-- ADD THIS LINE
         run: python mrt_bot.py
