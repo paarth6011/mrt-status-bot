@@ -2,11 +2,11 @@ import requests
 import os
 from datetime import datetime, timedelta
 
-# Configuration
+# --- Configuration ---
+# All sensitive keys are now securely pulled from environment variables
 TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-# Your updated Google Bridge URL
-BRIDGE_URL = "https://script.google.com/macros/s/AKfycbx1LjBYCyTH7jbnzpDL6cICi784bLMDbQkl2IzXKXaWj2dWGW45BIbspObRNvtRindwTQ/exec"
+BRIDGE_URL = os.getenv("BRIDGE_URL")
 
 def send_telegram(message):
     api_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
