@@ -46,8 +46,10 @@ def get_lta_alerts():
             headers={"AccountKey": LTA_KEY, "accept": "application/json"},
             timeout=15
         )
+        raw = res.json()
+        print(f"LTA raw response: {raw}")
         alerts = []
-        for item in res.json().get("value", []):
+        for item in raw.get("value", []):
             if item.get("Status") == 1:  # 1 = Normal, no disruption
                 continue
             segments = item.get("AffectedSegments", [])
