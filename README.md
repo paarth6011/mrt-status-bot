@@ -18,7 +18,7 @@ An automated Telegram bot that monitors Singapore's Mass Rapid Transit (MRT) net
 
 ## ⚙️ How It Works
 
-1. **The Trigger:** A GitHub Action workflow (`monitor.yml`) wakes up the Python script every 5 minutes during peak hours (and every 15 minutes during off-peak).
+1. **The Trigger:** A GitHub Action workflow (`monitor.yml`) wakes up the Python script every 5 minutes during peak hours (7–10 AM & 5–8 PM SGT) and every 15 minutes during off-peak hours (6 AM–11 PM SGT).
 2. **The Fetch:** The script hits a Google Apps Script endpoint, which parses the latest transit data.
 3. **The Logic:** The Python script compares the current network status against the previous state. 
 4. **The Alert:** If a new disruption is found, or if it is exactly 7:00 AM, a formatted Markdown payload is sent to the Telegram API to alert the user.
