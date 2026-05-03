@@ -137,4 +137,5 @@ def check_mrt_status():
 
 if __name__ == "__main__":
     validate_env()
+    send_telegram("🧪 *TEST MESSAGE*\n\nYour MRT Status Bot is working correctly!\n\nBoth LTA API and Telegram are connected.")
     check_mrt_status()
