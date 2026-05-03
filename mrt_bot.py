@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -13,12 +14,11 @@ BRIDGE_URL = os.getenv("BRIDGE_URL")
 LTA_KEY = os.getenv("LTA_KEY")
 
 LTA_API_URL = "https://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 CACHE_FILE = ".alert_cache"
 LTA_STATUS_NORMAL = 1
 
 
-def validate_env():
+def validate_env() -> None:
     missing_core = [k for k, v in {"BOT_TOKEN": TOKEN, "CHAT_ID": CHAT_ID}.items() if not v]
     if missing_core:
         print(f"❌ Missing required environment variables: {', '.join(missing_core)}")
@@ -28,18 +28,32 @@ def validate_env():
         sys.exit(1)
 
 
+def escape_markdown(text: str) -> str:
+    """Escape special characters in external API content for Telegram Markdown mode."""
+    for char in ("*", "_", "`", "["):
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
 def send_telegram(message: str) -> None:
+    # URL is built locally so the token is never stored in a module-level variable
+    # that could appear in tracebacks or error logs.
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
         res = requests.post(
-            TELEGRAM_API_URL,
+            url,
             data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True},
             timeout=15,
         )
         result = res.json()
         if not result.get("ok"):
             print(f"Telegram API error: {result.get('description')}")
-    except Exception as e:
-        print(f"Telegram request failed: {e}")
+    except requests.exceptions.Timeout:
+        print("Telegram request failed: timed out")
+    except requests.exceptions.ConnectionError:
+        print("Telegram request failed: connection error")
+    except Exception:
+        print("Telegram request failed")
 
 
 def get_lta_alerts() -> list[dict]:
@@ -51,6 +65,7 @@ def get_lta_alerts() -> list[dict]:
             headers={"AccountKey": LTA_KEY, "accept": "application/json"},
             timeout=15,
         )
+        res.raise_for_status()
         data = res.json().get("value", {})
         if data.get("Status") == LTA_STATUS_NORMAL:
             return []
@@ -61,6 +76,9 @@ def get_lta_alerts() -> list[dict]:
             for msg in data.get("Message", [])
             if msg.get("Content")
         ]
+    except requests.exceptions.HTTPError as e:
+        print(f"LTA API HTTP error: {e.response.status_code}")
+        return []
     except Exception as e:
         print(f"LTA API error: {e}")
         return []
@@ -71,7 +89,15 @@ def get_bridge_alerts() -> list[dict]:
         return []
     try:
         res = requests.get(BRIDGE_URL, timeout=30)
-        return res.json().get("value", {}).get("Message", [])
+        res.raise_for_status()
+        messages = res.json().get("value", {}).get("Message", [])
+        if not isinstance(messages, list):
+            print("Bridge returned unexpected Message format")
+            return []
+        return messages
+    except requests.exceptions.HTTPError as e:
+        print(f"Bridge HTTP error: {e.response.status_code}")
+        return []
     except Exception as e:
         print(f"Bridge error: {e}")
         return []
@@ -91,24 +117,34 @@ def merge_alerts(lta_alerts: list[dict], bridge_alerts: list[dict]) -> list[dict
 
 def compute_hash(alerts: list[dict]) -> str:
     pairs = sorted((a.get("Line", ""), a.get("Content", "")) for a in alerts)
-    return hashlib.md5(json.dumps(pairs).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(pairs).encode()).hexdigest()
 
 
 def load_cached_hash() -> str:
     try:
         with open(CACHE_FILE) as f:
             return f.read().strip()
-    except FileNotFoundError:
+    except OSError:
         return ""
 
 
 def save_hash(hash_val: str) -> None:
-    with open(CACHE_FILE, "w") as f:
-        f.write(hash_val)
+    # Atomic write: write to a temp file then rename to avoid partial writes on crash.
+    cache_dir = os.path.dirname(os.path.abspath(CACHE_FILE))
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=cache_dir, delete=False, suffix=".tmp") as f:
+            f.write(hash_val)
+            tmp_path = f.name
+        os.replace(tmp_path, CACHE_FILE)
+    except OSError as e:
+        print(f"Failed to save alert cache: {e}")
 
 
 def format_alert_message(alerts: list[dict], sg_time_str: str) -> str:
-    details = "".join(f"*{a.get('Line', 'MRT')}*: {a.get('Content', '')}\n" for a in alerts)
+    details = "".join(
+        f"*{escape_markdown(a.get('Line', 'MRT'))}*: {escape_markdown(a.get('Content', ''))}\n"
+        for a in alerts
+    )
     return f"⚠️ *NEW TRAIN NOTICE*\n\n{details}\n🕒 _Last Updated: {sg_time_str}_"
 
 
