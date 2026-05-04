@@ -15,6 +15,7 @@ LTA_KEY = os.getenv("LTA_KEY")
 
 LTA_API_URL = "https://datamall2.mytransport.sg/ltaodataservice/TrainServiceAlerts"
 CACHE_FILE = ".alert_cache"
+DAILY_CACHE_FILE = ".daily_sent_date"
 LTA_STATUS_NORMAL = 1
 
 
@@ -140,6 +141,25 @@ def save_hash(hash_val: str) -> None:
         print(f"Failed to save alert cache: {e}")
 
 
+def load_last_daily_date() -> str:
+    try:
+        with open(DAILY_CACHE_FILE) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def save_daily_date(date_str: str) -> None:
+    cache_dir = os.path.dirname(os.path.abspath(DAILY_CACHE_FILE))
+    try:
+        with tempfile.NamedTemporaryFile("w", dir=cache_dir, delete=False, suffix=".tmp") as f:
+            f.write(date_str)
+            tmp_path = f.name
+        os.replace(tmp_path, DAILY_CACHE_FILE)
+    except OSError as e:
+        print(f"Failed to save daily cache: {e}")
+
+
 def format_alert_message(alerts: list[dict], sg_time_str: str) -> str:
     details = "".join(
         f"*{escape_markdown(a.get('Line', 'MRT'))}*: {escape_markdown(a.get('Content', ''))}\n"
@@ -176,8 +196,10 @@ def check_mrt_status() -> None:
     # No active alerts — reset hash so the next disruption fires as new.
     save_hash("")
 
-    if now_sg.hour == 7 and now_sg.minute < 30:
+    today_str = now_sg.strftime("%Y-%m-%d")
+    if now_sg.hour == 7 and today_str != load_last_daily_date():
         send_telegram(f"☀️ *DAILY MRT STATUS*\n\nAll lines normal.\n\n🕒 _Checked at {sg_time_str}_")
+        save_daily_date(today_str)
         print("☀️ Daily 7AM summary sent.")
     else:
         print("No alerts detected and not the 7AM window. Staying silent.")
