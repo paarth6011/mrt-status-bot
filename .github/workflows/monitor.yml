@@ -25,7 +25,9 @@ jobs:
       - name: Restore alert cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
         with:
-          path: .alert_cache
+          path: |
+            .alert_cache
+            .daily_sent_date
           key: alert-${{ github.run_id }}
           restore-keys: |
             alert-
